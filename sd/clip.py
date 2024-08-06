@@ -8,47 +8,55 @@ class CLIPEmbedding(nn.Module):
         super().__init__()
 
         self.token_embedding = nn.Embedding(n_vocab, n_embed)
-        self.positional_embeddings = nn.Parameter(torch.zeros((n_tokens, n_embed)))
+        self.position_embedding = nn.Parameter(torch.zeros((n_tokens, n_embed)))
 
     def forward(self, tokens):
         x = self.token_embedding(tokens)
 
-        return x + self.positional_embeddings
+        return x + self.position_embedding
     
 
 class CLIPLayer(nn.Module):
-    def __init__(self, n_head: int, n_embed: int):
+    def __init__(self, n_head: int, n_embd: int):
         super().__init__()
-        self.layernorm_1 = nn.LayerNorm(n_embed)
-        self.attention = SelfAttention(n_head, n_embed)
-        self.layernorm_2 = nn.LayerNorm(n_embed)
-        self.linear_1 = nn.Linear(n_embed, 4 * n_embed)
-        self.linear_2 = nn.Linear(n_embed * 4, n_embed)
+        
+        # Pre-attention norm
+        self.layernorm_1 = nn.LayerNorm(n_embd)
+        # Self attention
+        self.attention = SelfAttention(n_head, n_embd)
+        # Pre-FNN norm
+        self.layernorm_2 = nn.LayerNorm(n_embd)
+        # Feedforward layer
+        self.linear_1 = nn.Linear(n_embd, 4 * n_embd)
+        self.linear_2 = nn.Linear(4 * n_embd, n_embd)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        residue = x 
+    def forward(self, x):
+        residue = x
 
         x = self.layernorm_1(x)
-
+        
         x = self.attention(x, casual_mask=True)
-
+        
         x += residue
 
         residue = x
-
         x = self.layernorm_2(x)
-
+        
+        x = self.linear_1(x)
+        
         x = x * torch.sigmoid(1.702 * x)
-
+        
         x = self.linear_2(x)
+        
+        x += residue
 
-        return x + residue
+        return x
 
 
 class CLIP(nn.Module):
     def __init__(self):
         super().__init__()
-        self.embedding = CLIPEmbedding(49488, 768, 77)
+        self.embedding = CLIPEmbedding(49408, 768, 77)
         
         self.layers = nn.ModuleList([
             CLIPLayer(12, 768) for _ in range(12)
